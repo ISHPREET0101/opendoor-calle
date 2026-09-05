@@ -16,7 +16,8 @@
     "check": "npm run lint && npm run typecheck && npm test && npm run build",
     "verify:no-secrets": "node scripts/verify-no-secrets.mjs",
     "format": "oxfmt",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "db:local": "wrangler d1 migrations apply DB --local --config wrangler.local.json"
   },
   "dependencies": {
     "@call-e/calle": "0.7.0",

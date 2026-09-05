@@ -6,7 +6,6 @@ import {
   ArrowRight,
   Check,
   CheckCircle2,
-  CirclePause,
   Clock3,
   ExternalLink,
   FileCheck2,
@@ -41,37 +40,23 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import type { VerificationResult } from '@/lib/call-e/contract';
+import { initialWorkflow, verifyChain, type WorkflowState, type Scenario } from '@/lib/domain/workflow';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import {
-  acceptedPatch,
   canPublish,
   evaluatePreflight,
   maskPhone,
-  normalizeDecisions,
   stablePreviewHash,
-  type CandidateChange,
   type Decision,
 } from '@/lib/domain/verification';
 
 type View = 'operations' | 'review' | 'directory' | 'audit';
-type RunStatus = 'idle' | 'queued' | 'in_progress' | 'completed' | 'published';
-
-interface DemoState {
-  view: View;
-  status: RunStatus;
-  callId: string | null;
-  changes: CandidateChange[];
-  revision: number;
-  publishedPatch: Record<string, string>;
-  announcement: string;
-}
+type DemoState = WorkflowState;
 
 const DESTINATION = '+919876543210';
 const IDEMPOTENCY_KEY = 'opendoor:northstar:rev7:hours-access:v1';
 const PURPOSE = 'Verify Saturday hours and accessibility for the public directory.';
-const INITIAL_STATE: DemoState = {
-  view: 'operations', status: 'idle', callId: null, changes: [], revision: 7, publishedPatch: {}, announcement: '',
-};
+const INITIAL_STATE: DemoState = initialWorkflow();
 
 const listings = [
   { name: 'Northstar Community Pantry', category: 'Food support', freshness: '142 days', status: 'Review due', tone: 'warning' },
@@ -101,7 +86,7 @@ function PrimaryNav({ state, setView }: { state: DemoState; setView: (view: View
             <Button key={view} variant={state.view === view ? 'secondary' : 'ghost'} size="lg" onClick={() => setView(view)} className="capitalize">{view}</Button>
           ))}
         </div>
-        <div className="flex items-center gap-2"><ModeBadge /><Button variant="outline" size="icon-lg" aria-label="Global stop is available in Live mode"><CirclePause /></Button></div>
+        <div className="flex items-center gap-2"><ModeBadge /></div>
       </div>
     </nav>
   );
@@ -126,9 +111,10 @@ function ProofChain({ state }: { state: DemoState }) {
   );
 }
 
-function VerificationDialog({ onRun }: { onRun: () => void }) {
+function VerificationDialog({ onRun }: { onRun: (scenario: Scenario) => void }) {
   const [open, setOpen] = useState(false);
   const [authorized, setAuthorized] = useState(false);
+  const [scenario, setScenario] = useState<Scenario>('confirmed');
   const preflight = evaluatePreflight({
     mode: 'simulation', purpose: PURPOSE, destination: DESTINATION, authorized, suppressed: false,
     withinCallingWindow: true, globalStop: false, idempotencyKey: IDEMPOTENCY_KEY,
@@ -146,6 +132,7 @@ function VerificationDialog({ onRun }: { onRun: () => void }) {
           <div className="sm:col-span-2"><span className="text-slate-500">Purpose</span><strong className="block">{PURPOSE}</strong></div>
           <div className="sm:col-span-2"><span className="text-slate-500">Idempotency key</span><strong className="block break-all font-mono text-xs">{IDEMPOTENCY_KEY}</strong></div>
         </div>
+        <label htmlFor="test-scenario" className="grid gap-2 text-sm font-medium">Test scenario<NativeSelect id="test-scenario" aria-label="Test scenario" value={scenario} onChange={event => setScenario(event.target.value as Scenario)}><NativeSelectOption value="confirmed">Confirmed facts + address conflict</NativeSelectOption><NativeSelectOption value="refused">Recipient refuses verification</NativeSelectOption><NativeSelectOption value="missing-evidence">Result has no supporting evidence</NativeSelectOption></NativeSelect></label>
         <ul className="grid gap-2 text-sm">
           {preflight.checks.map((check) => <li key={check.label} className="flex items-center gap-2"><span className={`grid size-5 place-items-center rounded-full ${check.passed ? 'bg-teal-100 text-teal-800' : 'bg-amber-100 text-amber-800'}`}>{check.passed ? <Check className="size-3" /> : '!'}</span>{check.label}</li>)}
         </ul>
@@ -154,14 +141,14 @@ function VerificationDialog({ onRun }: { onRun: () => void }) {
           <span><strong className="block">I confirm this fictional contact is authorized for the demo.</strong><span className="text-slate-600">Live mode additionally requires a server-side approved number and one-time approval token.</span></span>
         </div>
         <DialogFooter>
-          <Button disabled={!preflight.allowed} onClick={() => { setOpen(false); onRun(); }} className="min-h-11">Approve and simulate <ArrowRight data-icon="inline-end" /></Button>
+          <Button disabled={!preflight.allowed} onClick={() => { setOpen(false); onRun(scenario); }} className="min-h-11">Approve and simulate <ArrowRight data-icon="inline-end" /></Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-function Operations({ state, onRun, onInspect }: { state: DemoState; onRun: () => void; onInspect: () => void }) {
+function Operations({ state, onRun, onInspect }: { state: DemoState; onRun: (scenario: Scenario) => void; onInspect: () => void }) {
   return (
     <>
       <section className="border-b border-slate-200 bg-slate-950 text-white">
@@ -178,15 +165,15 @@ function Operations({ state, onRun, onInspect }: { state: DemoState; onRun: () =
         </div>
       </section>
       <div className="mx-auto max-w-[1500px] px-5 py-7 lg:px-8">
-        {state.status !== 'idle' && <Alert className="mb-5 border-sky-300 bg-sky-50"><Sparkles /><AlertTitle>{state.status === 'completed' ? 'Simulation complete — evidence is ready' : 'CALL-E simulation is running'}</AlertTitle><AlertDescription>Stable run ID: <code>{state.callId}</code>. No external request was made.</AlertDescription></Alert>}
-        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><p className="text-sm font-semibold text-teal-700">Today’s verification health</p><h2 className="mt-1 text-2xl font-bold tracking-[-0.035em]">Four services, two decisions waiting</h2></div><p className="text-sm text-slate-600">Fictional demo data · safe to replay</p></div>
+        {state.status !== 'idle' && <Alert className="mb-5 border-sky-300 bg-sky-50"><Sparkles /><AlertTitle>{state.status === 'published' ? 'Reviewed facts published' : 'Simulation complete — evidence is ready'}</AlertTitle><AlertDescription>Stable run ID: <code>{state.callId}</code>. No external request was made.</AlertDescription></Alert>}
+        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><p className="text-sm font-semibold text-teal-700">Today’s verification health</p><h2 className="mt-1 text-2xl font-bold tracking-[-0.035em]">Community verification queue</h2></div><p className="text-sm text-slate-600">Fictional demo data · safe to replay</p></div>
         <div className="mt-5 grid border border-slate-200 bg-white sm:grid-cols-3">
-          {[['2', 'Ready to publish', CheckCircle2, 'text-teal-700'], ['1', 'Review overdue', Clock3, 'text-amber-700'], ['1', 'Conflict quarantined', TriangleAlert, 'text-rose-700']].map(([value, label, Icon, color], index) => (
+          {[[String(state.changes.filter(c => c.decision === 'accepted').length), 'Fields accepted', CheckCircle2, 'text-teal-700'], [String(state.changes.filter(c => c.decision === 'pending').length), 'Decisions remaining', Clock3, 'text-amber-700'], [String(state.changes.filter(c => c.decision === 'quarantined').length), 'Fields quarantined', TriangleAlert, 'text-rose-700']].map(([value, label, Icon, color], index) => (
             <div key={String(label)} className={`p-5 ${index ? 'border-t border-slate-200 sm:border-l sm:border-t-0' : ''}`}><div className="flex items-center justify-between"><p className="text-sm font-medium text-slate-600">{String(label)}</p><Icon className={`size-5 ${String(color)}`} /></div><p className="mt-2 text-3xl font-bold">{String(value)}</p></div>
           ))}
         </div>
-        <div className="mt-5 hidden border border-slate-200 bg-white sm:block"><Table><TableCaption className="sr-only">Community service listings and verification status</TableCaption><TableHeader><TableRow><TableHead scope="col">Provider</TableHead><TableHead scope="col">Category</TableHead><TableHead scope="col">Last verified</TableHead><TableHead scope="col">Status</TableHead><TableHead scope="col" className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{listings.map((listing) => <TableRow key={listing.name}><TableCell className="font-semibold">{listing.name}</TableCell><TableCell>{listing.category}</TableCell><TableCell>{listing.freshness} ago</TableCell><TableCell><Badge variant="outline" className={statusClass[listing.tone as keyof typeof statusClass]}>{listing.status}</Badge></TableCell><TableCell className="text-right"><Button size="lg" variant="outline" aria-label={`Inspect ${listing.name}`} onClick={listing.name.startsWith('Northstar') ? onInspect : undefined}>Inspect</Button></TableCell></TableRow>)}</TableBody></Table></div>
-        <div className="mt-5 grid gap-3 sm:hidden">{listings.map((listing) => <article key={listing.name} className="border border-slate-200 bg-white p-4"><div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold">{listing.name}</h3><p className="text-sm text-slate-600">{listing.category} · {listing.freshness} ago</p></div><Badge variant="outline" className={statusClass[listing.tone as keyof typeof statusClass]}>{listing.status}</Badge></div><Button className="mt-4 min-h-11 w-full" variant="outline" onClick={listing.name.startsWith('Northstar') ? onInspect : undefined}>Inspect listing</Button></article>)}</div>
+        <div className="mt-5 hidden border border-slate-200 bg-white sm:block"><Table><TableCaption className="sr-only">Community service listings and verification status</TableCaption><TableHeader><TableRow><TableHead scope="col">Provider</TableHead><TableHead scope="col">Category</TableHead><TableHead scope="col">Last verified</TableHead><TableHead scope="col">Status</TableHead><TableHead scope="col" className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{listings.map((listing) => <TableRow key={listing.name}><TableCell className="font-semibold">{listing.name}</TableCell><TableCell>{listing.category}</TableCell><TableCell>{listing.freshness} ago</TableCell><TableCell><Badge variant="outline" className={statusClass[listing.tone as keyof typeof statusClass]}>{listing.status}</Badge></TableCell><TableCell className="text-right"><Button size="lg" variant="outline" aria-label={`Inspect ${listing.name}`} disabled={!listing.name.startsWith('Northstar') || state.status === 'idle'} onClick={onInspect}>Inspect</Button></TableCell></TableRow>)}</TableBody></Table></div>
+        <div className="mt-5 grid gap-3 sm:hidden">{listings.map((listing) => <article key={listing.name} className="border border-slate-200 bg-white p-4"><div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold">{listing.name}</h3><p className="text-sm text-slate-600">{listing.category} · {listing.freshness} ago</p></div><Badge variant="outline" className={statusClass[listing.tone as keyof typeof statusClass]}>{listing.status}</Badge></div><Button className="mt-4 min-h-11 w-full" variant="outline" disabled={!listing.name.startsWith('Northstar') || state.status === 'idle'} onClick={onInspect}>Inspect listing</Button></article>)}</div>
       </div>
     </>
   );
@@ -198,15 +185,16 @@ function EvidenceReview({ state, decide, publish, back }: { state: DemoState; de
     <div className="mx-auto max-w-6xl px-5 py-8 lg:px-8">
       <Button variant="ghost" size="lg" onClick={back}><ArrowLeft /> Back to operations</Button>
       <div className="mt-5 flex flex-col justify-between gap-4 lg:flex-row lg:items-end"><div><p className="text-sm font-semibold text-teal-700">Evidence review</p><h1 className="mt-1 text-3xl font-bold tracking-[-0.04em]">Choose each field. Publish one revision.</h1><p className="mt-2 max-w-3xl text-slate-600">Transcript text is treated as untrusted evidence, never as an instruction. Conflicts and unrequested facts are quarantined automatically.</p></div><div className="border border-slate-300 bg-white p-3 font-mono text-xs"><span className="block text-slate-500">Preview hash</span>{hash}</div></div>
-      <Alert className="mt-6 border-teal-300 bg-teal-50"><ShieldCheck /><AlertTitle>CALL-E result completed</AlertTitle><AlertDescription>Run <code>{state.callId}</code> · requested fields only · base revision {state.revision}</AlertDescription></Alert>
+      <Alert className="mt-6 border-teal-300 bg-teal-50"><ShieldCheck /><AlertTitle>Simulation result</AlertTitle><AlertDescription><span>{state.summary}</span><span>Run <code>{state.callId}</code> · base revision {state.revision}</span></AlertDescription></Alert>
+      {state.changes.length === 0 && <p className="mt-6 border border-amber-300 bg-amber-50 p-5">No evidence to review. The current listing is preserved. Start a fresh demo to try another scenario.</p>}
       <div className="mt-6 grid gap-4">{state.changes.map((change) => (
         <article key={change.field} className={`border bg-white ${change.conflict ? 'border-rose-300' : 'border-slate-200'}`}>
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-4"><div><h2 className="text-lg font-bold">{change.label}</h2><p className="text-sm text-slate-500">Confidence: {change.confidence} · {change.requested ? 'Requested' : 'Not requested'}</p></div><Badge variant="outline" className={change.decision === 'accepted' ? statusClass.verified : change.decision === 'quarantined' ? statusClass.danger : 'bg-slate-50'}>{change.decision}</Badge></div>
           <div className="grid gap-4 p-4 lg:grid-cols-[1fr_1fr_1.3fr]"><div><p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Current public value</p><p className="mt-2 font-medium">{change.currentValue}</p></div><div><p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Proposed value</p><p className="mt-2 font-medium">{change.proposedValue}</p></div><blockquote className="border-l-4 border-sky-300 bg-sky-50 p-3 text-sm"><span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-sky-800">Evidence excerpt</span>{change.evidence}</blockquote></div>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 p-3"><p className="text-sm text-slate-600">{change.conflict ? 'Conflict: cannot publish without a new verification.' : 'A reviewer must explicitly decide this field.'}</p>{!change.conflict && <div className="flex gap-2"><Button size="lg" variant="outline" onClick={() => decide(change.field, 'rejected')} aria-label={`Reject ${change.label} change`}><X /> Reject</Button><Button size="lg" onClick={() => decide(change.field, 'accepted')} aria-label={`Accept ${change.label} change`}><Check /> Accept</Button></div>}</div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 p-3"><p className="text-sm text-slate-600">{change.decision === 'quarantined' ? 'Withheld: missing evidence, uncertainty, or a conflict requires new verification.' : 'A reviewer must explicitly decide this field.'}</p>{change.decision !== 'quarantined' && state.status === 'completed' && <div className="flex gap-2"><Button size="lg" variant="outline" onClick={() => decide(change.field, 'rejected')} aria-label={`Reject ${change.label} change`}><X /> Reject</Button><Button size="lg" onClick={() => decide(change.field, 'accepted')} aria-label={`Accept ${change.label} change`}><Check /> Accept</Button></div>}</div>
         </article>
       ))}</div>
-      <div className="sticky bottom-3 mt-6 flex flex-col items-center justify-between gap-3 border border-slate-300 bg-white/95 p-4 shadow-xl backdrop-blur sm:flex-row"><div><strong>{state.changes.filter((change) => change.decision !== 'pending').length}/{state.changes.length} decisions resolved</strong><p className="text-sm text-slate-600">Accepted fields publish together against revision {state.revision}.</p></div><Button size="lg" className="min-h-11 w-full sm:w-auto" disabled={!canPublish(state.changes)} onClick={publish}><LockKeyhole /> Publish immutable revision</Button></div>
+      <div className="sticky bottom-3 mt-6 flex flex-col items-center justify-between gap-3 border border-slate-300 bg-white/95 p-4 shadow-xl backdrop-blur sm:flex-row"><div><strong>{state.changes.filter((change) => change.decision !== 'pending').length}/{state.changes.length} decisions resolved</strong><p className="text-sm text-slate-600">Accepted fields publish together against revision {state.revision}.</p></div><Button size="lg" className="min-h-11 w-full sm:w-auto" disabled={state.status !== 'completed' || !canPublish(state.changes)} onClick={publish}><LockKeyhole /> Publish immutable revision</Button></div>
     </div>
   );
 }
@@ -214,12 +202,13 @@ function EvidenceReview({ state, decide, publish, back }: { state: DemoState; de
 function PublicDirectory({ state, setView }: { state: DemoState; setView: (view: View) => void }) {
   const hours = state.publishedPatch.saturday_hours ?? '09:00–17:00';
   const access = state.publishedPatch.wheelchair_access ?? 'Not yet verified';
-  return <div className="mx-auto max-w-5xl px-5 py-10 lg:px-8"><p className="text-sm font-semibold text-teal-700">Public directory</p><h1 className="mt-1 text-4xl font-bold tracking-[-0.05em]">Northstar Community Pantry</h1><p className="mt-3 max-w-2xl text-lg text-slate-600">Food support for the fictional Cedar Lane community. No private phone, transcript, confidence score, or reviewer data is published.</p><div className="mt-7 grid border border-slate-200 bg-white md:grid-cols-[1.4fr_1fr]"><div className="p-6"><Badge className="bg-teal-100 text-teal-800">Verified revision {state.revision}</Badge><dl className="mt-6 grid gap-5"><div><dt className="text-sm text-slate-500">Saturday hours</dt><dd className="text-xl font-bold">{hours}</dd></div><div><dt className="text-sm text-slate-500">Accessibility</dt><dd className="text-xl font-bold">{access}</dd></div><div><dt className="text-sm text-slate-500">Address</dt><dd className="text-xl font-bold">18 Cedar Lane</dd><p className="text-sm text-amber-700">Conflicting unit detail withheld pending verification.</p></div></dl></div><aside className="border-t border-slate-200 bg-slate-50 p-6 md:border-l md:border-t-0"><ShieldCheck className="size-8 text-teal-700" /><h2 className="mt-3 text-xl font-bold">Why trust this listing?</h2><p className="mt-2 leading-6 text-slate-600">Each displayed fact was requested, supported by call evidence, approved by a human, and committed in one revision.</p><Button variant="outline" size="lg" className="mt-5" onClick={() => setView('audit')}>View public proof <ExternalLink /></Button></aside></div></div>;
+  return <div className="mx-auto max-w-5xl px-5 py-10 lg:px-8"><p className="text-sm font-semibold text-teal-700">Public directory</p><h1 className="mt-1 text-4xl font-bold tracking-[-0.05em]">Northstar Community Pantry</h1><p className="mt-3 max-w-2xl text-lg text-slate-600">Food support for the fictional Cedar Lane community. No private phone, transcript, confidence score, or reviewer data is published.</p><div className="mt-7 grid border border-slate-200 bg-white md:grid-cols-[1.4fr_1fr]"><div className="p-6"><Badge className="bg-teal-100 text-teal-800">{state.status === 'published' ? 'Verified revision' : 'Baseline revision'} {state.revision}</Badge><dl className="mt-6 grid gap-5"><div><dt className="text-sm text-slate-500">Saturday hours</dt><dd className="text-xl font-bold">{hours}</dd></div><div><dt className="text-sm text-slate-500">Accessibility</dt><dd className="text-xl font-bold">{access}</dd></div><div><dt className="text-sm text-slate-500">Address</dt><dd className="text-xl font-bold">18 Cedar Lane</dd><p className="text-sm text-amber-700">Conflicting unit detail withheld pending verification.</p></div></dl></div><aside className="border-t border-slate-200 bg-slate-50 p-6 md:border-l md:border-t-0"><ShieldCheck className="size-8 text-teal-700" /><h2 className="mt-3 text-xl font-bold">Why trust this listing?</h2><p className="mt-2 leading-6 text-slate-600">Updated fields require evidence and a human decision. Unchanged baseline facts have not been reverified. This directory uses fictional demonstration data.</p><Button variant="outline" size="lg" className="mt-5" onClick={() => setView('audit')}>View public proof <ExternalLink /></Button></aside></div></div>;
 }
 
 function AuditTrail({ state }: { state: DemoState }) {
-  const events = state.status === 'published' ? ['Revision published', '2 fields accepted; 1 conflict quarantined', 'CALL-E simulation completed', 'Authorized preview approved', 'Base revision 7 loaded'] : ['Base revision 7 loaded', 'No verification run yet'];
-  return <div className="mx-auto max-w-5xl px-5 py-10 lg:px-8"><p className="text-sm font-semibold text-teal-700">Append-only audit</p><h1 className="mt-1 text-4xl font-bold tracking-[-0.05em]">Every decision leaves a trail.</h1><p className="mt-3 text-slate-600">The public view stays minimal. The steward view preserves hashes, decisions, and stable run IDs.</p><ol className="mt-8 border border-slate-200 bg-white">{events.map((event, index) => <li key={event} className="grid grid-cols-[40px_1fr] gap-3 border-b border-slate-200 p-4 last:border-b-0"><span className="grid size-8 place-items-center bg-slate-950 text-sm font-bold text-white">{events.length - index}</span><div><strong>{event}</strong><p className="mt-1 font-mono text-xs text-slate-500">audit_{stablePreviewHash([event, String(index)])} · hash-linked</p></div></li>)}</ol></div>;
+  const [valid, setValid] = useState<boolean | null>(null);
+  useEffect(() => { let active = true; void verifyChain(state.events).then(result => { if (active) setValid(result); }); return () => { active = false; }; }, [state.events]);
+  return <div className="mx-auto max-w-5xl px-5 py-10 lg:px-8"><p className="text-sm font-semibold text-teal-700">Saved audit trail</p><h1 className="mt-1 text-4xl font-bold tracking-[-0.05em]">Every decision leaves a trail.</h1><p className="mt-3 text-slate-600">Each saved event includes the previous event’s SHA-256 hash. Verification detects changes against this chain; it is not an independent signature.</p><div className="mt-5 flex flex-wrap items-center gap-3"><Badge>{valid === null ? 'Checking proof…' : valid ? 'Proof chain verified' : 'Proof verification failed'}</Badge><a href="/api/state?proof=1" target="_blank" rel="noreferrer" className="text-sm font-semibold underline">Open proof JSON</a></div>{!state.events.length && <p className="mt-6">No verification run yet.</p>}<ol className="mt-8 border border-slate-200 bg-white">{state.events.map(event => <li key={event.hash} className="border-b border-slate-200 p-4 last:border-b-0"><strong>{event.sequence}. {event.detail}</strong><p className="mt-1 text-sm text-slate-500">{event.at}</p><p className="mt-2 break-all font-mono text-xs">{event.hash}</p></li>)}</ol></div>;
 }
 
 declare global {
@@ -228,34 +217,44 @@ declare global {
 
 export function OpenDoorApp() {
   const [state, setState] = useState<DemoState>(INITIAL_STATE);
+  const [ready, setReady] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
   const headingRef = useRef<HTMLDivElement>(null);
-  const setView = (view: View) => setState((current) => ({ ...current, view }));
+  const latest = useRef(state);
+  useEffect(() => { latest.current = state; }, [state]);
+  const inFlight = useRef(false);
+  const setView = (view: View) => setState(current => ({ ...current, view }));
 
   useEffect(() => {
-    document.documentElement.dataset.opendoorReady = 'true';
-    return () => { delete document.documentElement.dataset.opendoorReady; };
+    fetch('/api/state').then(async response => {
+      const data = await response.json() as { state: DemoState; error?: string };
+      if (!response.ok) throw new Error(data.error);
+      setState(data.state); setReady(true);
+    }).catch(cause => setError(cause instanceof Error ? cause.message : 'Could not load the saved session.'));
   }, []);
   useEffect(() => {
-    fetch('/api/state')
-      .then((response) => response.json())
-      .then((value) => {
-        const data = value as { state?: DemoState | null };
-        if (data.state?.revision) setState(data.state);
-      })
-      .catch(() => undefined);
-  }, []);
-  useEffect(() => { if (state !== INITIAL_STATE) fetch('/api/state', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(state) }).catch(() => undefined); }, [state]);
+    if (ready) document.documentElement.dataset.opendoorReady = 'true';
+    return () => { delete document.documentElement.dataset.opendoorReady; };
+  }, [ready]);
   useEffect(() => { headingRef.current?.focus(); }, [state.view]);
 
-  const runSimulation = async () => {
-    setState((current) => ({ ...current, status: 'in_progress', callId: 'call_demo_northstar_01', announcement: 'Verification simulation started. No phone call was placed.' }));
-    const response = await fetch('/api/calls', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode: 'simulation', destination: DESTINATION, idempotencyKey: IDEMPOTENCY_KEY, purpose: PURPOSE, locale: 'en-IN', listingId: 'northstar-pantry', authorized: true }) });
-    const result = (await response.json()) as VerificationResult;
-    setState((current) => ({ ...current, status: 'completed', callId: result.callId, changes: normalizeDecisions(result.changes), view: 'review', announcement: 'Simulation completed. Three candidate changes are ready for review.' }));
+  const command = async (action: string, values: Record<string, unknown> = {}) => {
+    if (inFlight.current) return;
+    inFlight.current = true; setBusy(true); setError('');
+    try {
+      const response = await fetch('/api/state', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action, expectedVersion: latest.current.version, ...values }) });
+      const data = await response.json() as { state: DemoState; error?: string };
+      if (data.state) { latest.current = data.state; setState(data.state); }
+      if (!response.ok) throw new Error(data.error || 'The operation could not be saved.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Connection lost. Reload to check the saved result before trying again.');
+    } finally { inFlight.current = false; setBusy(false); }
   };
-  const decide = (field: string, decision: Decision) => setState((current) => ({ ...current, changes: current.changes.map((change) => change.field === field ? { ...change, decision } : change), announcement: `${field.replace('_', ' ')} marked ${decision}.` }));
-  const publish = () => setState((current) => ({ ...current, status: 'published', revision: current.revision + 1, publishedPatch: acceptedPatch(current.changes), view: 'directory', announcement: `Revision ${current.revision + 1} published. Only accepted requested fields are public.` }));
-  const reset = () => setState({ ...INITIAL_STATE, announcement: 'Demo reset to revision 7.' });
+  const runSimulation = async (scenario: Scenario = 'confirmed') => command('simulate', { scenario, authorized: true });
+  const decide = (field: string, decision: Decision) => { void command('review', { field, decision }); };
+  const publish = () => { void command('publish'); };
+  const reset = () => { void command('reset'); };
 
   useEffect(() => {
     const api = window.modelContext;
@@ -271,5 +270,5 @@ export function OpenDoorApp() {
   else if (state.view === 'audit') content = <AuditTrail state={state} />;
   else content = <Operations state={state} onRun={runSimulation} onInspect={() => state.changes.length ? setView('review') : undefined} />;
 
-  return <main className="min-h-screen bg-[var(--paper)] text-slate-950"><a href="#main-content" className="sr-only z-50 bg-white p-3 focus:not-sr-only focus:fixed focus:left-3 focus:top-3">Skip to main content</a><PrimaryNav state={state} setView={setView} /><div id="main-content" ref={headingRef} tabIndex={-1}>{content}</div><div aria-live="polite" aria-atomic="true" className="sr-only">{state.announcement}</div><footer className="border-t border-slate-200 bg-white"><div className="mx-auto flex max-w-[1500px] flex-col justify-between gap-3 px-5 py-5 text-sm text-slate-600 sm:flex-row lg:px-8"><p>OpenDoor · fictional data · safe simulation by default</p><div className="flex gap-2"><Button variant="ghost" size="sm" onClick={reset}><RotateCcw /> Reset demo</Button><Button variant="ghost" size="sm" onClick={() => setView('audit')}><History /> Audit</Button></div></div></footer></main>;
+  return <main className="min-h-screen bg-[var(--paper)] text-slate-950"><a href="#main-content" className="sr-only z-50 bg-white p-3 focus:not-sr-only focus:fixed focus:left-3 focus:top-3">Skip to main content</a><PrimaryNav state={state} setView={setView} /><div id="main-content" ref={headingRef} tabIndex={-1}>{error && <Alert role="alert" className="mx-auto my-4 max-w-5xl border-rose-300"><TriangleAlert /><AlertTitle>Action needs attention</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}{!ready ? <p className="p-8">Loading your saved demo session…</p> : <fieldset disabled={busy} className="min-w-0">{content}</fieldset>}{busy && <output className="fixed bottom-4 left-4 border bg-white p-3 shadow">Saving verified state…</output>}</div><div aria-live="polite" aria-atomic="true" className="sr-only">{state.announcement}</div><footer className="border-t border-slate-200 bg-white"><div className="mx-auto flex max-w-[1500px] flex-col justify-between gap-3 px-5 py-5 text-sm text-slate-600 sm:flex-row lg:px-8"><p>OpenDoor · fictional data · safe simulation by default</p><div className="flex gap-2"><Button disabled={!ready || busy} variant="ghost" size="sm" onClick={reset}><RotateCcw /> Reset demo</Button><Button variant="ghost" size="sm" onClick={() => setView('audit')}><History /> Audit</Button></div></div></footer></main>;
 }

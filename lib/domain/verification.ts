@@ -59,19 +59,19 @@ export function stablePreviewHash(parts: readonly string[]): string {
 
 export function normalizeDecisions(changes: CandidateChange[]): CandidateChange[] {
   return changes.map((change) =>
-    change.conflict || !change.requested
+    change.conflict || !change.requested || !change.evidence.trim() || change.confidence === 'low' || !change.proposedValue.trim() || /^(unknown|not yet verified)$/i.test(change.proposedValue.trim())
       ? { ...change, decision: 'quarantined' as const }
       : change,
   );
 }
 
 export function canPublish(changes: CandidateChange[]): boolean {
-  return changes.every((change) => change.decision !== 'pending');
+  return changes.length > 0 && changes.every((change) => change.decision !== 'pending') && Object.keys(acceptedPatch(changes)).length > 0;
 }
 
 export function acceptedPatch(changes: CandidateChange[]): Record<string, string> {
   return Object.fromEntries(
-    changes
+    normalizeDecisions(changes)
       .filter((change) => change.requested && !change.conflict && change.decision === 'accepted')
       .map((change) => [change.field, change.proposedValue]),
   );

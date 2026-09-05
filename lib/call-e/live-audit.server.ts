@@ -2,15 +2,11 @@ import { eq } from 'drizzle-orm';
 
 import { getDb } from '@/db';
 import { verificationRuns } from '@/db/schema';
-import { stablePreviewHash } from '@/lib/domain/verification';
+import { digest } from '@/lib/domain/workflow';
 
 import type { VerificationRequest } from './contract';
 
-function runIdFor(idempotencyKey: string) {
-  return `run_${stablePreviewHash(['call-e', idempotencyKey])}`;
-}
-
-export async function claimLiveCallIntent(request: VerificationRequest): Promise<string> {
+export async function claimLiveCallIntent(request: VerificationRequest, approvalToken: string): Promise<string> {
   const db = getDb();
   const [existing] = await db
     .select({ id: verificationRuns.id })
@@ -22,14 +18,15 @@ export async function claimLiveCallIntent(request: VerificationRequest): Promise
     throw new Error('A call already exists for this idempotency key; review it before retrying');
   }
 
-  const id = runIdFor(request.idempotencyKey);
+  const id = `run_${await digest(['call-e', request.idempotencyKey])}`;
   await db.insert(verificationRuns).values({
     id,
     listingId: request.listingId,
     provider: 'call-e',
     status: 'queued',
     idempotencyKey: request.idempotencyKey,
-    previewHash: stablePreviewHash([request.listingId, request.idempotencyKey, request.purpose]),
+    // Unique constraint consumes the approval even if a caller changes the key.
+    previewHash: await digest(['approval', approvalToken]),
     evidenceJson: JSON.stringify({ state: 'intent_recorded' }),
     createdAt: new Date().toISOString(),
   });
@@ -50,10 +47,10 @@ export async function recordLiveCallAccepted(
     .where(eq(verificationRuns.id, runId));
 }
 
-export async function recordLiveCallRejected(runId: string): Promise<void> {
+export async function recordLiveCallUncertain(runId: string): Promise<void> {
   const db = getDb();
   await db
     .update(verificationRuns)
-    .set({ status: 'failed', evidenceJson: JSON.stringify({ state: 'provider_rejected' }) })
+    .set({ evidenceJson: JSON.stringify({ state: 'provider_outcome_unknown', instruction: 'Reconcile using the original idempotency key before any further call.' }) })
     .where(eq(verificationRuns.id, runId));
 }

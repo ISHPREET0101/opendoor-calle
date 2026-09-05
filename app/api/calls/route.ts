@@ -1,16 +1,20 @@
 import { env } from 'cloudflare:workers';
 import { NextResponse } from 'next/server';
 
-import { claimLiveCallIntent, recordLiveCallAccepted, recordLiveCallRejected } from '@/lib/call-e/live-audit.server';
+import { claimLiveCallIntent, recordLiveCallAccepted, recordLiveCallUncertain } from '@/lib/call-e/live-audit.server';
 import { createAuthorizedLiveCall, validateLiveAuthorization } from '@/lib/call-e/live.server';
 import { MockCallProvider } from '@/lib/call-e/mock-provider';
 import { evaluatePreflight } from '@/lib/domain/verification';
 
 export async function POST(request: Request) {
-  const body = (await request.json()) as {
+  let parsed: unknown;
+  try { parsed = await request.json(); } catch { return NextResponse.json({ error: 'Expected JSON.' }, { status: 400 }); }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return NextResponse.json({ error: 'Expected a call request.' }, { status: 400 });
+  const body = parsed as {
     mode?: 'simulation' | 'live'; destination?: string; idempotencyKey?: string; purpose?: string;
     locale?: 'en-IN' | 'hi-IN'; listingId?: string; authorized?: boolean; approvalToken?: string;
   };
+  if ([body.destination, body.idempotencyKey, body.purpose].some(value => typeof value !== 'string' || value.length > 2000) || (body.mode !== undefined && !['live', 'simulation'].includes(body.mode)) || (body.locale !== undefined && !['en-IN', 'hi-IN'].includes(body.locale))) return NextResponse.json({ error: 'Invalid call fields.' }, { status: 400 });
   const preflight = evaluatePreflight({
     mode: body.mode ?? 'simulation', purpose: body.purpose ?? '', destination: body.destination ?? '',
     authorized: body.authorized === true, suppressed: false, withinCallingWindow: true, globalStop: false,
@@ -38,15 +42,16 @@ export async function POST(request: Request) {
   let providerAccepted = false;
   try {
     validateLiveAuthorization(callRequest, authorization);
-    auditRunId = await claimLiveCallIntent(callRequest);
+    auditRunId = await claimLiveCallIntent(callRequest, authorization.approvalToken!);
     const created = await createAuthorizedLiveCall(callRequest, authorization);
     providerAccepted = true;
     await recordLiveCallAccepted(auditRunId, created);
     return NextResponse.json({ ...created, auditRunId, provider: 'call-e' });
   } catch (error) {
     if (auditRunId && !providerAccepted) {
-      await recordLiveCallRejected(auditRunId).catch(() => undefined);
+      await recordLiveCallUncertain(auditRunId).catch(() => undefined);
     }
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Live call rejected' }, { status: 403 });
+    if (auditRunId) return NextResponse.json({ error: 'Call outcome requires reconciliation. Do not create another call.', auditRunId }, { status: 502 });
+    return NextResponse.json({ error: error instanceof Error && /disabled|credentials|approval token|server-approved/.test(error.message) ? error.message : 'Call intent could not be claimed. Check approval usage and storage.' }, { status: 403 });
   }
 }
