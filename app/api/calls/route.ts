@@ -31,7 +31,8 @@ export async function POST(request: Request) {
   try {
     const created = await createAuthorizedLiveCall(callRequest, {
       apiKey: bindings.CALLE_API_KEY, liveEnabled: bindings.CALLE_LIVE_ENABLED === 'true',
-      approvedDestination: bindings.CALLE_APPROVED_DESTINATION, approvalToken: bindings.CALLE_APPROVAL_TOKEN,
+      approvedDestination: bindings.CALLE_APPROVED_DESTINATION, approvedPurpose: bindings.CALLE_APPROVED_PURPOSE,
+      approvalToken: bindings.CALLE_APPROVAL_TOKEN,
       suppliedApprovalToken: body.approvalToken,
     });
     return NextResponse.json({ ...created, provider: 'call-e' });

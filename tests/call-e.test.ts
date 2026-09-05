@@ -25,18 +25,22 @@ test('mock provider is deterministic and returns only normalized CALL-E statuses
 
 test('live adapter fails before network when live mode is disabled', async () => {
   await assert.rejects(
-    createAuthorizedLiveCall(request, { apiKey: 'test-key', liveEnabled: false, approvedDestination: request.destination, approvalToken: 'approved', suppliedApprovalToken: 'approved' }),
+    createAuthorizedLiveCall(request, { apiKey: 'test-key', liveEnabled: false, approvedDestination: request.destination, approvedPurpose: request.purpose, approvalToken: 'approved', suppliedApprovalToken: 'approved' }),
     /disabled/,
   );
 });
 
 test('live adapter rejects missing exact token and destination mismatch', async () => {
   await assert.rejects(
-    createAuthorizedLiveCall(request, { apiKey: 'test-key', liveEnabled: true, approvedDestination: request.destination, approvalToken: 'approved', suppliedApprovalToken: 'wrong' }),
+    createAuthorizedLiveCall(request, { apiKey: 'test-key', liveEnabled: true, approvedDestination: request.destination, approvedPurpose: request.purpose, approvalToken: 'approved', suppliedApprovalToken: 'wrong' }),
     /approval token/,
   );
   await assert.rejects(
-    createAuthorizedLiveCall(request, { apiKey: 'test-key', liveEnabled: true, approvedDestination: '+919999999999', approvalToken: 'approved', suppliedApprovalToken: 'approved' }),
+    createAuthorizedLiveCall(request, { apiKey: 'test-key', liveEnabled: true, approvedDestination: '+919999999999', approvedPurpose: request.purpose, approvalToken: 'approved', suppliedApprovalToken: 'approved' }),
     /server-approved/,
+  );
+  await assert.rejects(
+    createAuthorizedLiveCall({ ...request, purpose: 'Different task that was not approved.' }, { apiKey: 'test-key', liveEnabled: true, approvedDestination: request.destination, approvedPurpose: request.purpose, approvalToken: 'approved', suppliedApprovalToken: 'approved' }),
+    /server-approved test plan/,
   );
 });

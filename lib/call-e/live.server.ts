@@ -6,6 +6,7 @@ export interface LiveAuthorization {
   apiKey: string | undefined;
   liveEnabled: boolean;
   approvedDestination: string | undefined;
+  approvedPurpose: string | undefined;
   approvalToken: string | undefined;
   suppliedApprovalToken: string | undefined;
 }
@@ -21,6 +22,9 @@ export async function createAuthorizedLiveCall(
   }
   if (!authorization.approvedDestination || request.destination !== authorization.approvedDestination) {
     throw new Error('Destination is not the server-approved test number');
+  }
+  if (!authorization.approvedPurpose || request.purpose !== authorization.approvedPurpose) {
+    throw new Error('Purpose does not match the server-approved test plan');
   }
 
   const client = new CalleClient({ apiKey: authorization.apiKey, baseUrl: 'https://api.heycall-e.com' });

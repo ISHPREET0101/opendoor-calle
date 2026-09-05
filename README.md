@@ -2,7 +2,7 @@
 
 OpenDoor is a consent-first CALL-E workflow for community-service directories. It turns a bounded provider call into evidence-linked candidate facts, forces a human decision on every requested field, quarantines conflicts, and publishes one reviewable revision.
 
-The default demo is deliberately safe: it uses fictional providers, a reserved-looking fictional number, and a deterministic adapter that performs **zero external network calls**. The live adapter is present but fails closed unless four independent server-side gates are configured.
+The default demo is deliberately safe: it uses fictional providers, a reserved-looking fictional number, and a deterministic adapter that performs **zero external network calls**. The live adapter is present but fails closed unless five independent server-side gates are configured.
 
 ## Why this is different
 
@@ -47,6 +47,7 @@ The official `@call-e/calle@0.7.0` SDK is imported only by `lib/call-e/live.serv
 - `CALLE_API_KEY`
 - `CALLE_LIVE_ENABLED=true`
 - `CALLE_APPROVED_DESTINATION` equal to the exact E.164 destination
+- `CALLE_APPROVED_PURPOSE` equal to the exact bounded test script
 - `CALLE_APPROVAL_TOKEN` equal to the one-time token supplied by an authorized operator
 
 Do not put secrets in `.env.example`, browser code, screenshots, logs, or issue reports. The public UI intentionally offers no Live-mode control. A real call must be separately authorized for the exact owned or consenting test number.
