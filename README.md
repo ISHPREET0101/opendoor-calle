@@ -52,6 +52,8 @@ The official `@call-e/calle@0.7.0` SDK is imported only by `lib/call-e/live.serv
 
 Do not put secrets in `.env.example`, browser code, screenshots, logs, or issue reports. The public UI intentionally offers no Live-mode control. A real call must be separately authorized for the exact owned or consenting test number.
 
+Before the provider request, OpenDoor records a non-sensitive live-call intent in D1 using the durable idempotency key. A duplicate key or unavailable audit store blocks the call; an accepted CALL-E ID is then attached to that same audit record.
+
 ## Side effects and rollback
 
 - Simulation mode: no external network calls; it changes only the local demo state.

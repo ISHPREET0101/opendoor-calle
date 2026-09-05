@@ -11,10 +11,10 @@ export interface LiveAuthorization {
   suppliedApprovalToken: string | undefined;
 }
 
-export async function createAuthorizedLiveCall(
+export function validateLiveAuthorization(
   request: VerificationRequest,
   authorization: LiveAuthorization,
-): Promise<{ callId: string; status: string }> {
+): void {
   if (!authorization.liveEnabled) throw new Error('Live calling is disabled');
   if (!authorization.apiKey) throw new Error('CALL-E credentials are unavailable');
   if (!authorization.approvalToken || authorization.suppliedApprovalToken !== authorization.approvalToken) {
@@ -26,8 +26,15 @@ export async function createAuthorizedLiveCall(
   if (!authorization.approvedPurpose || request.purpose !== authorization.approvedPurpose) {
     throw new Error('Purpose does not match the server-approved test plan');
   }
+}
 
-  const client = new CalleClient({ apiKey: authorization.apiKey, baseUrl: 'https://api.heycall-e.com' });
+export async function createAuthorizedLiveCall(
+  request: VerificationRequest,
+  authorization: LiveAuthorization,
+): Promise<{ callId: string; status: string }> {
+  validateLiveAuthorization(request, authorization);
+
+  const client = new CalleClient({ apiKey: authorization.apiKey!, baseUrl: 'https://api.heycall-e.com' });
   const call = await client.calls.create(
     {
       task: request.purpose,

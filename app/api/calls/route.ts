@@ -1,7 +1,8 @@
 import { env } from 'cloudflare:workers';
 import { NextResponse } from 'next/server';
 
-import { createAuthorizedLiveCall } from '@/lib/call-e/live.server';
+import { claimLiveCallIntent, recordLiveCallAccepted, recordLiveCallRejected } from '@/lib/call-e/live-audit.server';
+import { createAuthorizedLiveCall, validateLiveAuthorization } from '@/lib/call-e/live.server';
 import { MockCallProvider } from '@/lib/call-e/mock-provider';
 import { evaluatePreflight } from '@/lib/domain/verification';
 
@@ -28,15 +29,24 @@ export async function POST(request: Request) {
   }
 
   const bindings = env as unknown as Record<string, string | undefined>;
+  const authorization = {
+    apiKey: bindings.CALLE_API_KEY, liveEnabled: bindings.CALLE_LIVE_ENABLED === 'true',
+    approvedDestination: bindings.CALLE_APPROVED_DESTINATION, approvedPurpose: bindings.CALLE_APPROVED_PURPOSE,
+    approvalToken: bindings.CALLE_APPROVAL_TOKEN, suppliedApprovalToken: body.approvalToken,
+  };
+  let auditRunId: string | undefined;
+  let providerAccepted = false;
   try {
-    const created = await createAuthorizedLiveCall(callRequest, {
-      apiKey: bindings.CALLE_API_KEY, liveEnabled: bindings.CALLE_LIVE_ENABLED === 'true',
-      approvedDestination: bindings.CALLE_APPROVED_DESTINATION, approvedPurpose: bindings.CALLE_APPROVED_PURPOSE,
-      approvalToken: bindings.CALLE_APPROVAL_TOKEN,
-      suppliedApprovalToken: body.approvalToken,
-    });
-    return NextResponse.json({ ...created, provider: 'call-e' });
+    validateLiveAuthorization(callRequest, authorization);
+    auditRunId = await claimLiveCallIntent(callRequest);
+    const created = await createAuthorizedLiveCall(callRequest, authorization);
+    providerAccepted = true;
+    await recordLiveCallAccepted(auditRunId, created);
+    return NextResponse.json({ ...created, auditRunId, provider: 'call-e' });
   } catch (error) {
+    if (auditRunId && !providerAccepted) {
+      await recordLiveCallRejected(auditRunId).catch(() => undefined);
+    }
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Live call rejected' }, { status: 403 });
   }
 }
