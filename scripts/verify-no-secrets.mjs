@@ -6,7 +6,7 @@ const allowedExtensions = new Set(['.ts', '.tsx', '.js', '.mjs', '.json', '.md']
 const forbidden = [
   /sk-[A-Za-z0-9_-]{20,}/g,
   /calle_[A-Za-z0-9_-]{20,}/g,
-  /CALL_E_API_KEY\s*=\s*[^\s#]+/g,
+  /(?:CALLE_API_KEY|CALL_E_API_KEY)\s*=\s*[^\s#]+/g,
 ];
 const findings = [];
 

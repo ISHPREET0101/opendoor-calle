@@ -1,6 +1,6 @@
 import { CalleClient } from '@call-e/calle';
 
-import type { VerificationRequest, VerificationResult } from './contract';
+import type { VerificationRequest } from './contract';
 
 export interface LiveAuthorization {
   apiKey: string | undefined;
@@ -53,19 +53,4 @@ export async function createAuthorizedLiveCall(
     { idempotencyKey: request.idempotencyKey },
   );
   return { callId: call.id, status: call.status };
-}
-
-export function normalizeLiveResult(call: {
-  id: string;
-  status: VerificationResult['status'];
-  summary: string | null;
-  evidence: string[];
-}): Pick<VerificationResult, 'callId' | 'status' | 'provider' | 'summary' | 'evidence'> {
-  return {
-    callId: call.id,
-    status: call.status,
-    provider: 'call-e',
-    summary: call.summary ?? 'CALL-E returned no summary.',
-    evidence: call.evidence,
-  };
 }

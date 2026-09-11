@@ -1,7 +1,9 @@
 import { env } from 'cloudflare:workers';
 import { NextResponse } from 'next/server';
-import { initialWorkflow, stageResult, reviewField, publishRevision, verifyChain, type WorkflowState, type Scenario } from '@/lib/domain/workflow';
+import { initialWorkflow, stageResult, reviewField, publishRevision, verifyChain, digest, type WorkflowState, type Scenario } from '@/lib/domain/workflow';
 import { scenarioResult } from '@/lib/call-e/scenarios';
+import type { VerificationResult } from '@/lib/call-e/contract';
+import type { CandidateChange } from '@/lib/domain/verification';
 
 const COOKIE = 'opendoor_session';
 function sessionId(request: Request) {
@@ -19,6 +21,30 @@ async function createSession() {
   await env.DB.prepare('INSERT INTO demo_sessions (id, state_json, updated_at) VALUES (?, ?, ?)').bind(id, JSON.stringify(state), new Date().toISOString()).run();
   return { id, state };
 }
+// Operator-only: import a live CALL-E result that has already been observed through
+// GET /api/calls/{runId}. Importing never dials and never publishes; staged candidates
+// go through the same evidence, quarantine, and field-decision gates as a simulation.
+async function loadObservedLiveResult(body: Record<string, unknown>): Promise<VerificationResult> {
+  const token = (env as unknown as Record<string, string | undefined>).CALLE_APPROVAL_TOKEN;
+  if (!token || body.approvalToken !== token) throw new Error('A valid operator approval token is required to import a live result.');
+  const runId = typeof body.auditRunId === 'string' ? body.auditRunId : '';
+  if (!/^run_[a-f0-9]{64}$/.test(runId)) throw new Error('Unknown live run.');
+  const previewHash = await digest(['approval', token]);
+  const row = await env.DB.prepare('SELECT evidence_json FROM verification_runs WHERE id = ? AND preview_hash = ?').bind(runId, previewHash).first<{ evidence_json: string }>();
+  if (!row) throw new Error('No live run matches this approval.');
+  const saved = JSON.parse(row.evidence_json) as { state?: string; callId?: string; status?: VerificationResult['status']; summary?: string | null; evidence?: unknown; changes?: CandidateChange[] };
+  if (saved.state !== 'provider_observed' || !saved.callId || !Array.isArray(saved.changes)) {
+    throw new Error('Poll the live run with GET /api/calls/{runId} until its result is observed before importing.');
+  }
+  return {
+    callId: saved.callId,
+    status: saved.status ?? 'completed',
+    provider: 'call-e',
+    summary: typeof saved.summary === 'string' ? saved.summary : '',
+    evidence: Array.isArray(saved.evidence) ? saved.evidence.filter((line): line is string => typeof line === 'string') : [],
+    changes: saved.changes,
+  };
+}
 export async function GET(request: Request) {
   try {
     const id = sessionId(request);
@@ -29,7 +55,7 @@ export async function GET(request: Request) {
     }
     const state = JSON.parse(row.state_json) as WorkflowState;
     if (new URL(request.url).searchParams.get('proof') === '1') {
-      return response(request, { project: 'OpenDoor', provider: 'simulation', chainValid: await verifyChain(state.events), events: state.events, revisions: state.revisions, note: 'SHA-256 detects changes against a trusted chain head; this is not an externally signed attestation.' });
+      return response(request, { project: 'OpenDoor', provider: state.source, chainValid: await verifyChain(state.events), events: state.events, revisions: state.revisions, note: 'SHA-256 detects changes against a trusted chain head; this is not an externally signed attestation.' });
     }
     return response(request, { state, persisted: true });
   } catch {
@@ -64,7 +90,8 @@ export async function POST(request: Request) {
         if (body.authorized !== true) throw new Error('Confirm the fictional contact authorization.');
         if (!['confirmed', 'refused', 'missing-evidence'].includes(String(body.scenario))) throw new Error('Unknown scenario.');
         next = await stageResult(current, await scenarioResult(body.scenario as Scenario), body.scenario as Scenario);
-      } else if (body.action === 'review') next = await reviewField(current, body.field, body.decision);
+      } else if (body.action === 'import_live') next = await stageResult(current, await loadObservedLiveResult(body), 'confirmed', 'live');
+      else if (body.action === 'review') next = await reviewField(current, body.field, body.decision);
       else if (body.action === 'publish') next = await publishRevision(current);
       else throw new Error('Unknown command. Arbitrary state replacement is not permitted.');
     } catch (error) { return response(request, { error: (error as Error).message }, undefined, 400); }

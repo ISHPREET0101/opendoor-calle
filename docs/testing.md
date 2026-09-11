@@ -2,7 +2,7 @@
 
 The acceptance suite is intentionally layered:
 
-- `npm test`: deterministic policy, hashing, redaction, publication, mock-adapter, and live-gate tests, including refusal, unsupported evidence, forged acceptance, audit tampering, repeated publication, and historical-state preservation.
+- `npm test`: deterministic policy, hashing, redaction, publication, mock-adapter, live-gate, and live-result mapping tests, including refusal, unsupported evidence, forged acceptance, audit tampering, repeated publication, low provider confidence, incomplete calls, and historical-state preservation.
 - `npm run test:e2e`: desktop and mobile browser journeys using installed Microsoft Edge, including simulation to publication and unauthorized Live API rejection.
 - `npm run typecheck`: strict TypeScript across UI, routes, database schema, tests, and CALL-E adapter.
 - `npm run lint`: active application surface only; the scaffold ships a large unused shadcn catalog with upstream lint findings.

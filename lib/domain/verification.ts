@@ -12,6 +12,12 @@ export interface CandidateChange {
   decision: Decision;
 }
 
+export const BASELINE_FIELD_VALUES: Record<CandidateChange['field'], string> = {
+  saturday_hours: '09:00–17:00',
+  wheelchair_access: 'Unknown',
+  address: '18 Cedar Lane',
+};
+
 export interface PreflightInput {
   mode: 'simulation' | 'live';
   purpose: string;

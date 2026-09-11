@@ -2,6 +2,7 @@ import { acceptedPatch, canPublish, normalizeDecisions, type CandidateChange } f
 import type { VerificationResult } from '../call-e/contract.ts';
 
 export type Scenario = 'confirmed' | 'refused' | 'missing-evidence';
+export type ResultSource = 'simulation' | 'live';
 export interface ProofEvent { sequence: number; type: string; detail: string; at: string; previousHash: string; hash: string }
 export interface Revision { revision: number; fields: Record<string, string>; callId: string; publishedAt: string }
 export interface WorkflowState {
@@ -10,8 +11,9 @@ export interface WorkflowState {
   callId: string | null; changes: CandidateChange[]; revision: number;
   publishedPatch: Record<string, string>; announcement: string; version: number;
   events: ProofEvent[]; revisions: Revision[]; summary: string; scenario: Scenario;
+  source: ResultSource;
 }
-export const initialWorkflow = (): WorkflowState => ({ view: 'operations', status: 'idle', callId: null, changes: [], revision: 7, publishedPatch: {}, announcement: '', version: 0, events: [], revisions: [], summary: '', scenario: 'confirmed' });
+export const initialWorkflow = (): WorkflowState => ({ view: 'operations', status: 'idle', callId: null, changes: [], revision: 7, publishedPatch: {}, announcement: '', version: 0, events: [], revisions: [], summary: '', scenario: 'confirmed', source: 'simulation' });
 export async function digest(value: unknown): Promise<string> {
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(value)));
   return Array.from(new Uint8Array(bytes), byte => byte.toString(16).padStart(2, '0')).join('');
@@ -29,13 +31,19 @@ export async function verifyChain(events: ProofEvent[]): Promise<boolean> {
   }
   return true;
 }
-export async function stageResult(current: WorkflowState, result: VerificationResult, scenario: Scenario): Promise<WorkflowState> {
+export async function stageResult(current: WorkflowState, result: VerificationResult, scenario: Scenario, source: ResultSource = 'simulation'): Promise<WorkflowState> {
   if (current.status !== 'idle') throw new Error('Start a fresh demo before running another scenario.');
   const state = structuredClone(current);
-  state.callId = result.callId; state.summary = result.summary; state.scenario = scenario;
+  state.callId = result.callId; state.summary = result.summary; state.scenario = scenario; state.source = source;
   state.changes = result.status === 'completed' ? normalizeDecisions(result.changes) : []; state.status = 'completed'; state.view = 'review'; state.version++;
   state.announcement = result.summary;
-  await append(state, 'simulation_completed', `${scenario}: ${state.changes.length} candidate fields; zero phone calls. Evidence digest: ${await digest(result)}.`);
+  await append(
+    state,
+    source === 'live' ? 'live_result_imported' : 'simulation_completed',
+    source === 'live'
+      ? `CALL-E call ${result.callId} imported by an operator: ${state.changes.length} candidate fields await human review. Evidence digest: ${await digest(result)}.`
+      : `${scenario}: ${state.changes.length} candidate fields; zero phone calls. Evidence digest: ${await digest(result)}.`,
+  );
   return state;
 }
 export async function reviewField(current: WorkflowState, field: unknown, decision: unknown): Promise<WorkflowState> {

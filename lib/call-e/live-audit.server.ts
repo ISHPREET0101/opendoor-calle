@@ -47,10 +47,18 @@ export async function recordLiveCallAccepted(
     .where(eq(verificationRuns.id, runId));
 }
 
-export async function recordLiveCallUncertain(runId: string): Promise<void> {
+export async function recordLiveCallUncertain(runId: string, callId?: string): Promise<void> {
   const db = getDb();
   await db
     .update(verificationRuns)
-    .set({ evidenceJson: JSON.stringify({ state: 'provider_outcome_unknown', instruction: 'Reconcile using the original idempotency key before any further call.' }) })
+    .set({
+      evidenceJson: JSON.stringify({
+        // Preserve the provider ID when the call was accepted but the acceptance write
+        // failed, so the run stays reconcilable instead of losing a dialed call.
+        ...(callId ? { callId } : {}),
+        state: 'provider_outcome_unknown',
+        instruction: 'Reconcile using the original idempotency key before any further call.',
+      }),
+    })
     .where(eq(verificationRuns.id, runId));
 }

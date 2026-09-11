@@ -69,8 +69,10 @@ const statusClass = {
   warning: 'border-amber-300 bg-amber-50 text-amber-800', verified: 'border-teal-300 bg-teal-50 text-teal-800', danger: 'border-rose-300 bg-rose-50 text-rose-800',
 } as const;
 
-function ModeBadge() {
-  return <Badge className="border border-sky-300 bg-sky-50 text-sky-800">Simulation · zero network calls</Badge>;
+function ModeBadge({ source }: { source: DemoState['source'] }) {
+  return source === 'live'
+    ? <Badge className="border border-teal-300 bg-teal-50 text-teal-800">Live CALL-E result · operator gated</Badge>
+    : <Badge className="border border-sky-300 bg-sky-50 text-sky-800">Simulation · zero network calls</Badge>;
 }
 
 function PrimaryNav({ state, setView }: { state: DemoState; setView: (view: View) => void }) {
@@ -86,7 +88,7 @@ function PrimaryNav({ state, setView }: { state: DemoState; setView: (view: View
             <Button key={view} variant={state.view === view ? 'secondary' : 'ghost'} size="lg" onClick={() => setView(view)} className="capitalize">{view}</Button>
           ))}
         </div>
-        <div className="flex items-center gap-2"><ModeBadge /></div>
+        <div className="flex items-center gap-2"><ModeBadge source={state.source} /></div>
       </div>
     </nav>
   );
@@ -165,7 +167,7 @@ function Operations({ state, onRun, onInspect }: { state: DemoState; onRun: (sce
         </div>
       </section>
       <div className="mx-auto max-w-[1500px] px-5 py-7 lg:px-8">
-        {state.status !== 'idle' && <Alert className="mb-5 border-sky-300 bg-sky-50"><Sparkles /><AlertTitle>{state.status === 'published' ? 'Reviewed facts published' : 'Simulation complete — evidence is ready'}</AlertTitle><AlertDescription>Stable run ID: <code>{state.callId}</code>. No external request was made.</AlertDescription></Alert>}
+        {state.status !== 'idle' && <Alert className="mb-5 border-sky-300 bg-sky-50"><Sparkles /><AlertTitle>{state.status === 'published' ? 'Reviewed facts published' : state.source === 'live' ? 'Live CALL-E result imported — evidence is ready' : 'Simulation complete — evidence is ready'}</AlertTitle><AlertDescription>Stable run ID: <code>{state.callId}</code>. {state.source === 'live' ? 'Result observed from an operator-authorized CALL-E call; no new call was placed to show this.' : 'No external request was made.'}</AlertDescription></Alert>}
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><p className="text-sm font-semibold text-teal-700">Today’s verification health</p><h2 className="mt-1 text-2xl font-bold tracking-[-0.035em]">Community verification queue</h2></div><p className="text-sm text-slate-600">Fictional demo data · safe to replay</p></div>
         <div className="mt-5 grid border border-slate-200 bg-white sm:grid-cols-3">
           {[[String(state.changes.filter(c => c.decision === 'accepted').length), 'Fields accepted', CheckCircle2, 'text-teal-700'], [String(state.changes.filter(c => c.decision === 'pending').length), 'Decisions remaining', Clock3, 'text-amber-700'], [String(state.changes.filter(c => c.decision === 'quarantined').length), 'Fields quarantined', TriangleAlert, 'text-rose-700']].map(([value, label, Icon, color], index) => (
@@ -185,7 +187,7 @@ function EvidenceReview({ state, decide, publish, back }: { state: DemoState; de
     <div className="mx-auto max-w-6xl px-5 py-8 lg:px-8">
       <Button variant="ghost" size="lg" onClick={back}><ArrowLeft /> Back to operations</Button>
       <div className="mt-5 flex flex-col justify-between gap-4 lg:flex-row lg:items-end"><div><p className="text-sm font-semibold text-teal-700">Evidence review</p><h1 className="mt-1 text-3xl font-bold tracking-[-0.04em]">Choose each field. Publish one revision.</h1><p className="mt-2 max-w-3xl text-slate-600">Transcript text is treated as untrusted evidence, never as an instruction. Conflicts and unrequested facts are quarantined automatically.</p></div><div className="border border-slate-300 bg-white p-3 font-mono text-xs"><span className="block text-slate-500">Preview hash</span>{hash}</div></div>
-      <Alert className="mt-6 border-teal-300 bg-teal-50"><ShieldCheck /><AlertTitle>Simulation result</AlertTitle><AlertDescription><span>{state.summary}</span><span>Run <code>{state.callId}</code> · base revision {state.revision}</span></AlertDescription></Alert>
+      <Alert className="mt-6 border-teal-300 bg-teal-50"><ShieldCheck /><AlertTitle>{state.source === 'live' ? 'Live CALL-E result' : 'Simulation result'}</AlertTitle><AlertDescription><span>{state.summary}</span><span>Run <code>{state.callId}</code> · base revision {state.revision}</span></AlertDescription></Alert>
       {state.changes.length === 0 && <p className="mt-6 border border-amber-300 bg-amber-50 p-5">No evidence to review. The current listing is preserved. Start a fresh demo to try another scenario.</p>}
       <div className="mt-6 grid gap-4">{state.changes.map((change) => (
         <article key={change.field} className={`border bg-white ${change.conflict ? 'border-rose-300' : 'border-slate-200'}`}>

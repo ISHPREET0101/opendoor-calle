@@ -39,19 +39,20 @@ export async function POST(request: Request) {
     approvalToken: bindings.CALLE_APPROVAL_TOKEN, suppliedApprovalToken: body.approvalToken,
   };
   let auditRunId: string | undefined;
-  let providerAccepted = false;
+  let created: { callId: string; status: string } | undefined;
   try {
     validateLiveAuthorization(callRequest, authorization);
     auditRunId = await claimLiveCallIntent(callRequest, authorization.approvalToken!);
-    const created = await createAuthorizedLiveCall(callRequest, authorization);
-    providerAccepted = true;
+    created = await createAuthorizedLiveCall(callRequest, authorization);
     await recordLiveCallAccepted(auditRunId, created);
     return NextResponse.json({ ...created, auditRunId, provider: 'call-e' });
   } catch (error) {
-    if (auditRunId && !providerAccepted) {
-      await recordLiveCallUncertain(auditRunId).catch(() => undefined);
+    if (auditRunId) {
+      // Even when the provider accepted the call, keep its ID on the run record so the
+      // outcome can be reconciled; a dialed call must never become untracked.
+      await recordLiveCallUncertain(auditRunId, created?.callId).catch(() => undefined);
+      return NextResponse.json({ error: 'Call outcome requires reconciliation. Do not create another call.', auditRunId }, { status: 502 });
     }
-    if (auditRunId) return NextResponse.json({ error: 'Call outcome requires reconciliation. Do not create another call.', auditRunId }, { status: 502 });
     return NextResponse.json({ error: error instanceof Error && /disabled|credentials|approval token|server-approved/.test(error.message) ? error.message : 'Call intent could not be claimed. Check approval usage and storage.' }, { status: 403 });
   }
 }

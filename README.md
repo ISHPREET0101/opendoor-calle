@@ -18,7 +18,7 @@ Freshness alone is not trust. OpenDoor treats a verification result as a propose
 
 ## Run locally
 
-Requirements: Node.js 22.13+ and npm.
+Requirements: Node.js 22.18+ and npm.
 
 ```bash
 npm ci
@@ -36,7 +36,7 @@ The simulation workflow is server controlled: commands stage known fixtures, rec
 
 The audit screen verifies the actual event chain and links to a JSON proof export. This is tamper detection against a trusted chain head, not an external signature or protection against a database administrator rewriting the entire chain. Revision snapshots are immutable through application commands and are stored inside each session record; the separate listing_revisions and audit_events tables are reserved for a future multi-listing service.
 
-Live CALL-E creation and operator-only result retrieval are implemented. No real call has been executed or validated. Live results are **not yet connected to the visual review/publication workflow**; do not describe the simulated browser journey as a proven live integration. Automated suppression-list and time-window services are not implemented; the operator must verify consent and calling time before enabling the exact test plan.
+Live CALL-E creation and operator-only result retrieval are implemented. No real call has been executed or validated yet. When an operator polls an accepted run with `GET /api/calls/{auditRunId}` and CALL-E returns an observed result, the structured values are mapped into review candidates: machine-extracted facts are capped at medium confidence, and values are quarantined automatically when CALL-E reports less than high completion confidence, a value is missing or "unknown", or the call has no transcript evidence. The operator can then import the observed result into the same human review and publication workflow with `POST /api/state` (`action: "import_live"`, the `auditRunId`, and the approval token); importing never dials and never publishes by itself. The public UI intentionally offers no Live-mode control. Automated suppression-list and time-window services are not implemented; the operator must verify consent and calling time before enabling the exact test plan.
 
 ## Verify
 

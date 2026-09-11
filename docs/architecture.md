@@ -2,7 +2,7 @@
 
 Current authoritative path: the UI sends `simulate`, `review`, and `publish` commands to `/api/state`. D1 session records contain versioned workflow state, immutable application-level revision snapshots, and SHA-256-linked events. A conditional single-row update atomically saves each transition and rejects concurrent changes. HttpOnly session cookies isolate visitors. `/api/state?proof=1` exports the session’s public proof, excluding candidate evidence.
 
-The diagram below describes component boundaries. The separate `listing_revisions` and `audit_events` schema tables are reserved and are not currently used by the session workflow. Live creation writes `verification_runs`; `/api/calls/{runId}` retrieves and saves provider results behind an operator token. Live result-to-UI review remains outstanding.
+The diagram below describes component boundaries. The separate `listing_revisions` and `audit_events` schema tables are reserved and are not currently used by the session workflow. Live creation writes `verification_runs`; `/api/calls/{runId}` retrieves provider results behind an operator token and persists them together with mapped review candidates. An operator holding the approval token can stage an observed live result into the session review workflow through the `import_live` command on `/api/state`; staged live candidates pass through the same quarantine, field-decision, and publication gates as simulated ones, and the public UI exposes no live-call control.
 
 ```text
 Steward UI
